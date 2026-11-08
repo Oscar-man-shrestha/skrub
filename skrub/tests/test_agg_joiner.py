@@ -125,6 +125,63 @@ def test_aggregate_boolean_columns(df_module):
     df_module.assert_frame_equal(aggregated, expected)
 
 
+def test_aggregate_mode_ties(df_module):
+    """With a tie, both backends keep a single value, the smallest one."""
+    table = df_module.make_dataframe(
+        {
+            "userId": [1, 1, 2, 2, 2, 2],
+            "genre": ["sf", "drama", "drama", "sf", "sf", "drama"],
+            "rating": [2.0, 1.0, 4.0, 3.0, 4.0, 3.0],
+        }
+    )
+    aggregated = aggregate(
+        table,
+        operations=["mode"],
+        key=["userId"],
+        cols_to_agg=["genre", "rating"],
+        suffix="",
+    )
+    if df_module.name == "polars":
+        aggregated = sbd.sort(aggregated, by="userId")
+    expected = df_module.make_dataframe(
+        {
+            "userId": [1, 2],
+            "genre_mode": ["drama", "drama"],
+            "rating_mode": [1.0, 3.0],
+        }
+    )
+    df_module.assert_frame_equal(aggregated, expected)
+
+
+def test_agg_joiner_mode_ties(df_module):
+    aux = df_module.make_dataframe({"key": [1, 1], "value": ["b", "a"]})
+    main = df_module.make_dataframe({"key": [1]})
+    joined = AggJoiner(
+        aux_table=aux, key="key", cols="value", operations="mode"
+    ).fit_transform(main)
+    assert sbd.to_list(sbd.col(joined, "value_mode")) == ["a"]
+
+
+def test_aggregate_mode_missing_values(df_module):
+    """Missing values are ignored, and a group with only missing values has a
+    missing mode."""
+    table = df_module.make_dataframe(
+        {"userId": [1, 1, 1, 2, 2], "genre": [None, None, "sf", None, None]}
+    )
+    aggregated = aggregate(
+        table,
+        operations=["mode"],
+        key=["userId"],
+        cols_to_agg=["genre"],
+        suffix="",
+    )
+    if df_module.name == "polars":
+        aggregated = sbd.sort(aggregated, by="userId")
+    mode = sbd.col(aggregated, "genre_mode")
+    assert sbd.to_list(sbd.is_null(mode)) == [False, True]
+    assert sbd.to_list(mode)[0] == "sf"
+
+
 def test_aggregate_suffix(df_module, main_table):
     main_table = df_module.DataFrame(main_table)
     aggregated = aggregate(

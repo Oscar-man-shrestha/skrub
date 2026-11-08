@@ -62,6 +62,12 @@ Bugfixes
   dataframes: the gaps were truncated to whole seconds, so events could be
   wrongly put in the same session and results differed from pandas.
   :pr:`2337` by :user:`Joey Tan <JoeyTan21>`.
+- With ``operations="mode"``, :class:`AggJoiner` and :class:`AggTarget` now
+  keep a single value when several values are equally frequent, the smallest
+  one, with both pandas and polars. Before, pandas returned an array of all the
+  tied values and polars kept one of them. Missing values are ignored with both
+  backends.
+  :pr:`XXXX` by :user:`Oscar Man Shrestha <Oscar-man-shrestha>`.
 
 Deprecations
 ------------

@@ -94,12 +94,23 @@ def perform_groupby(table, key, cols_to_agg, operations):
     raise_dispatch_unregistered_type(table, kind="DataFrame")
 
 
+def _pandas_mode(col):
+    # ``Series.mode`` returns every most frequent value when there is a tie,
+    # sorted. Keep only the first one (the smallest) so that each group gets a
+    # single value, like with polars. A group with only missing values has no
+    # mode and gets NaN.
+    modes = col.mode()
+    if modes.empty:
+        return np.nan
+    return modes.iloc[0]
+
+
 @perform_groupby.specialize("pandas", argument_type="DataFrame")
 def _perform_groupby_pandas(table, key, cols_to_agg, operations):
     # Pandas does not allow the keyword "mode" for aggregating
     # its ``DataFrameGroupBy`` objects, this is a workaround
     pandas_aggfuncs = {
-        "mode": pd.Series.mode,
+        "mode": _pandas_mode,
     }
     named_agg = {}
     for col, operation in product(cols_to_agg, operations):
@@ -124,7 +135,9 @@ def _perform_groupby_polars(table, key, cols_to_agg, operations):
             "sum": pl.col(col).sum(),
             "min": pl.col(col).min(),
             "max": pl.col(col).max(),
-            "mode": pl.col(col).mode().first(),
+            # Ignore nulls and sort the tied values so that the same value
+            # as with pandas is kept.
+            "mode": pl.col(col).drop_nulls().mode().sort().first(),
         }
         output_key = f"{col}_{operation}"
         aggfunc = polars_aggfuncs[operation].alias(output_key)
